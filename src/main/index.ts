@@ -36,20 +36,23 @@ function createWindow(): void {
     webPreferences: {
       sandbox: false,
       preload: join(__dirname, '../preload/index.js'),
-      devTools: true
+      devTools: true // Ensures the feature is enabled
     }
   })
 
+  // --- 1. FORCE DEVTOOLS OPEN (DETACHED) ---
+  // We move this here so it opens BEFORE the URL loads.
+  // Using 'detach' prevents the console from freezing if the renderer crashes.
+  if (is.dev) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' })
+  }
+
   // --- TWITCH CHAT FIX: STRIP SECURITY HEADERS ---
-  // This removes Twitch's "do not embed" instructions before Electron sees them.
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     if (details.url.includes('twitch.tv')) {
       const responseHeaders = { ...details.responseHeaders }
-
-      // Delete the specific headers that block the iframe
       delete responseHeaders['content-security-policy']
       delete responseHeaders['x-frame-options']
-
       callback({ cancel: false, responseHeaders })
       return
     }
@@ -63,11 +66,15 @@ function createWindow(): void {
 
   // --- FORCE OFFLINE ON CLOSE ---
   mainWindow.on('close', () => {
-    mainWindow.webContents.send('app-closing')
+    // We use a try-catch here just in case the webContents are already destroyed
+    try {
+      mainWindow.webContents.send('app-closing')
+    } catch (e) {
+      console.error('Failed to send closing signal', e)
+    }
   })
 
-  if (is.dev) mainWindow.webContents.openDevTools()
-
+  // --- LOAD THE APP ---
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {

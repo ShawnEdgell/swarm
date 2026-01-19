@@ -3,7 +3,7 @@
   import { user, login, logout } from '$lib/stores/user'
   import { lobbyStore } from '$lib/stores/lobby.svelte'
   import { db } from '$lib/firebase'
-  import { doc, onSnapshot, getDoc, setDoc } from 'firebase/firestore'
+  import { doc, onSnapshot, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
   import { get } from 'svelte/store'
 
   // Components
@@ -13,10 +13,11 @@
   import EASetupModal from './components/EASetupModal.svelte'
   import TwitchChat from './components/TwitchChat.svelte'
 
-  // Derived states
+  // Derived states - Svelte 5 logic
   let isLoggedOut = $derived(!$user)
   let isSkating = $derived(!!lobbyStore.onlineUsers.find((u) => u.id === $user?.uid))
 
+  // State variables
   let myRole = $state(''),
     currentEAUsername = $state(''),
     currentTags = $state([]),
@@ -33,12 +34,13 @@
       window.api.onAppClosing(async () => {
         const currentUser = get(user)
         if (currentUser?.uid) {
-          console.log('Detected app closure, forcing host offline...')
+          console.log('Closing app: Cleaning up host status...')
           await lobbyStore.setHosting(currentUser.uid, false)
         }
       })
     }
 
+    // Subscribe to the User Store
     const unsubUser = user.subscribe((u) => {
       if (!u) {
         if (unsubMe) {
@@ -48,16 +50,22 @@
         return
       }
 
-      // Set up the real-time listener for the user's Firestore profile
+      // Sync local state with Firestore Profile
       if (u.uid && !unsubMe) {
-        unsubMe = onSnapshot(doc(db, 'users', u.uid), (snap) => {
-          if (!snap.exists()) return
-          const data = snap.data() || {}
-          myRole = data.role || 'user'
-          currentEAUsername = data.eaUsername || ''
-          currentTags = data.tags || []
-          currentNote = data.note || ''
-        })
+        unsubMe = onSnapshot(
+          doc(db, 'users', u.uid),
+          (snap) => {
+            if (!snap.exists()) return
+            const data = snap.data() || {}
+            myRole = data.role || 'user'
+            currentEAUsername = data.eaUsername || ''
+            currentTags = data.tags || []
+            currentNote = data.note || ''
+          },
+          (err) => {
+            console.error('Profile Listener Error:', err)
+          }
+        )
       }
     })
 
@@ -68,28 +76,46 @@
   })
 
   async function handleToggleRequest() {
-    if (isLoggedOut || !$user) return
-
-    const snap = await getDoc(doc(db, 'users', $user.uid))
-    const userData = snap.data() || {}
-
-    // If starting a host, ensure EA ID is set
-    if (!isSkating) {
-      if (!snap.exists() || !userData.eaUsername) {
-        showEASetup = true
-        return
-      }
+    if (isLoggedOut || !$user) {
+      console.warn('Cannot toggle: User not logged in.')
+      return
     }
 
-    // Standardized property names to match store/lobby logic
-    lobbyStore.setHosting($user.uid, !isSkating, {
-      name: $user.name,
-      avatar: $user.avatar,
-      eaUsername: userData.eaUsername || currentEAUsername,
-      role: myRole || 'user',
-      tags: currentTags,
-      note: currentNote
-    })
+    try {
+      // Step 1: Check existing profile
+      const userRef = doc(db, 'users', $user.uid)
+      const snap = await getDoc(userRef)
+      const userData = snap.data() || {}
+
+      // CRITICAL FIX: Get the role directly from the DB so we don't overwrite it
+      const verifiedRole = userData.role || 'user'
+
+      // Step 2: Ensure EA ID exists before hosting
+      if (!isSkating) {
+        if (!snap.exists() || !userData.eaUsername) {
+          showEASetup = true
+          return
+        }
+      }
+
+      // Step 3: Standardized Payload for Web/App Sync
+      await lobbyStore.setHosting($user.uid, !isSkating, {
+        name: $user.name,
+        displayName: $user.name,
+        avatar: $user.avatar,
+        photoURL: $user.avatar,
+        eaUsername: userData.eaUsername || currentEAUsername,
+        role: verifiedRole, // <--- Use verifiedRole here
+        tags: currentTags,
+        note: currentNote,
+        platform: 'desktop'
+      })
+    } catch (err: any) {
+      console.error('Toggle Request Failed:', err)
+      if (err.message.includes('offline')) {
+        await lobbyStore.forceReconnect()
+      }
+    }
   }
 
   async function handleLogout() {
@@ -213,26 +239,30 @@
     {currentTags}
     {currentNote}
     onSave={async (data) => {
+      if (!$user) return
+
       const profileData = {
         eaUsername: data.username,
         tags: data.tags,
-        note: data.note
+        note: data.note,
+        lastSeen: serverTimestamp()
       }
 
-      // Save profile metadata
-      await setDoc(doc(db, 'users', $user.uid), profileData, { merge: true })
-
-      // Trigger the host status update
-      await lobbyStore.setHosting($user.uid, true, {
-        name: $user.name,
-        avatar: $user.avatar,
-        eaUsername: data.username,
-        role: myRole || 'user',
-        tags: data.tags,
-        note: data.note
-      })
-
-      showEASetup = false
+      try {
+        await setDoc(doc(db, 'users', $user.uid), profileData, { merge: true })
+        await lobbyStore.setHosting($user.uid, true, {
+          ...profileData,
+          name: $user.name,
+          displayName: $user.name,
+          avatar: $user.avatar,
+          photoURL: $user.avatar,
+          role: myRole || 'user',
+          platform: 'desktop'
+        })
+        showEASetup = false
+      } catch (err) {
+        console.error('Profile Save Error:', err)
+      }
     }}
   />
 </div>

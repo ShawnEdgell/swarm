@@ -40,7 +40,13 @@
   }
 
   function handleSave() {
-    onSave({ username, note, tags: $state.snapshot(selectedTags) })
+    if (!username.trim()) return // Prevent empty EA IDs
+
+    onSave({
+      username: username.trim(),
+      note: note.trim(),
+      tags: $state.snapshot(selectedTags)
+    })
     show = false
   }
 </script>
@@ -121,6 +127,7 @@
         <button
           class="btn btn-primary btn-sm px-4 uppercase font-black italic shadow-lg"
           onclick={handleSave}
+          disabled={!username.trim()}
         >
           Save Profile
         </button>
