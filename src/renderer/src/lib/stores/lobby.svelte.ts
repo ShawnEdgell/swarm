@@ -20,7 +20,7 @@ class LobbyStore {
   now = $state(Date.now())
   private unsubscribe: (() => void) | null = null
   private heartbeatInterval: any = null
-  private authUnsubscribe: (() => void) | null = null // Track the auth listener
+  private authUnsubscribe: (() => void) | null = null
 
   onlineUsers = $derived.by(() => {
     return this.rawUsers
@@ -37,14 +37,24 @@ class LobbyStore {
   })
 
   constructor() {
-    // Only set up the Auth listener if it doesn't exist
+    console.log('🚀 [Lobby] Store Init. Project:', db.app.options.projectId)
+
+    // 1. START SYNC IMMEDIATELY
+    // This allows public users (unauthenticated) to see the list
+    this.start()
+
+    // 2. Auth listener is now ONLY for managing the local user session/heartbeat
     if (!this.authUnsubscribe) {
       this.authUnsubscribe = onAuthStateChanged(auth, (user) => {
         if (user) {
-          console.log('👤 [Lobby] User active, starting sync...')
-          this.start()
+          console.log('👤 [Lobby] User logged in:', user.uid)
         } else {
-          this.stop() // Cleanup when logged out
+          console.warn('⏳ [Lobby] Logged out / Public view')
+          // Stop heartbeats if the user logs out while hosting
+          if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval)
+            this.heartbeatInterval = null
+          }
         }
       })
     }
@@ -54,14 +64,13 @@ class LobbyStore {
     }, 10000)
   }
 
-  // Proper cleanup to avoid "Client Terminated" errors
-  stop() {
+  // We no longer call stop() on logout because we want to keep seeing the list!
+  // This just cleans up the Firestore listener if the component is destroyed.
+  cleanup() {
     if (this.unsubscribe) {
       this.unsubscribe()
       this.unsubscribe = null
     }
-    this.rawUsers = []
-    this.loading = true
   }
 
   async forceReconnect() {
@@ -83,12 +92,12 @@ class LobbyStore {
     this.unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        console.log(`📥 [Lobby] Sync Success! Hosts: ${snapshot.docs.length}`)
+        console.log(`📥 [Lobby] Public Sync Success! Hosts: ${snapshot.docs.length}`)
         this.rawUsers = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
         this.loading = false
       },
       async (error) => {
-        // Only attempt reconnect if the app is still active
+        console.error('❌ [Lobby] Firestore Error:', error.code, error.message)
         if (error.code === 'unavailable' || error.message.includes('offline')) {
           await this.forceReconnect()
         }
@@ -97,7 +106,11 @@ class LobbyStore {
   }
 
   async setHosting(uid: string, isHosting: boolean, userData: any = {}) {
-    if (!auth.currentUser) return
+    // Hosting still requires a login
+    if (!auth.currentUser) {
+      console.error('❌ [Lobby] Auth required to host.')
+      return
+    }
 
     const currentUser = get(userStore)
     const userRef = doc(db, 'users', uid)
@@ -116,13 +129,9 @@ class LobbyStore {
       platform: 'desktop'
     }
 
-    // Clean up payloads for write
-    if (userData.eaUsername) payload.eaUsername = userData.eaUsername
-    if (userData.note) payload.note = userData.note
-    if (userData.tags) payload.tags = userData.tags
-
     try {
       await setDoc(userRef, payload, { merge: true })
+      console.log('✅ [Lobby] Status Updated:', isHosting ? 'Hosting' : 'Offline')
 
       if (isHosting) {
         if (this.heartbeatInterval) clearInterval(this.heartbeatInterval)
