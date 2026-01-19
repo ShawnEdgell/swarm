@@ -1,6 +1,7 @@
-import { writable } from 'svelte/store'
-import { auth } from '../firebase'
-import { signInAnonymously, signOut } from 'firebase/auth'
+import { writable, get } from 'svelte/store'
+import { auth, db } from '../firebase'
+import { signInAnonymously } from 'firebase/auth'
+import { doc, getDoc, onSnapshot } from 'firebase/firestore' // Added onSnapshot
 import { lobbyStore } from './lobby.svelte'
 
 export const user = writable<any>(null)
@@ -19,22 +20,51 @@ if (window.api?.onTwitchToken) {
 
       const twitchUser = data[0]
 
-      // 1. Sign in to Firebase FIRST
-      const userCredential = await signInAnonymously(auth)
-      const firebaseUid = userCredential.user.uid // This is your REAL ID
+      let firebaseUser = auth.currentUser
+      if (!firebaseUser) {
+        const userCredential = await signInAnonymously(auth)
+        firebaseUser = userCredential.user
+      }
 
-      // 2. Set the store using the Firebase UID so Firestore rules pass
-      user.set({
+      const firebaseUid = firebaseUser.uid
+
+      // 1. Initial Fetch to get the store started
+      const userDoc = await getDoc(doc(db, 'users', firebaseUid))
+      const dbData = userDoc.exists() ? userDoc.data() : {}
+
+      const userData = {
         uid: firebaseUid,
         twitchId: twitchUser.id,
-        name: twitchUser.display_name, // Standardized
-        avatar: twitchUser.profile_image_url, // Standardized
-        eaUsername: '', // Initialize to avoid 'undefined'
-        note: '',
-        role: 'user' // Default role
+        name: twitchUser.display_name,
+        avatar: twitchUser.profile_image_url,
+        eaUsername: dbData.eaUsername || '',
+        note: dbData.note || '',
+        tags: dbData.tags || [],
+        role: dbData.role || 'user'
+      }
+
+      user.set(userData)
+
+      // 2. REAL-TIME SYNC: Watch for changes to roles, tags, or EA ID
+      // This allows App.svelte to just use $user.role without extra logic
+      onSnapshot(doc(db, 'users', firebaseUid), (snap) => {
+        if (snap.exists()) {
+          const latest = snap.data()
+          user.update((u) =>
+            u
+              ? {
+                  ...u,
+                  role: latest.role || 'user',
+                  tags: latest.tags || [],
+                  eaUsername: latest.eaUsername || '',
+                  note: latest.note || ''
+                }
+              : u
+          )
+        }
       })
 
-      console.log('Logged in with ID:', firebaseUid)
+      console.log('✅ Auth & Profile Sync Active. ID:', firebaseUid)
     } catch (e) {
       console.error('Auth Sync Failed:', e)
     }
@@ -51,19 +81,20 @@ export const login = () => {
 
 export const logout = async () => {
   try {
-    // 1. Get the current user ID before signing out
-    let currentId: string | null = null
-    user.subscribe((u) => (currentId = u?.uid))()
+    const currentUser = get(user)
 
-    // 2. Force unhost in the database if an ID exists
-    if (currentId) {
-      await lobbyStore.setHosting(currentId, false)
+    if (currentUser?.uid) {
+      // Pass a hard copy of tags/info so setHosting doesn't read a null store
+      await lobbyStore.setHosting(currentUser.uid, false, {
+        eaUsername: currentUser.eaUsername,
+        note: currentUser.note,
+        tags: currentUser.tags,
+        displayName: currentUser.name
+      })
     }
 
-    // 3. Complete the Firebase sign-out
-    await signOut(auth)
     user.set(null)
-    console.log('Logged out and Session Terminated.')
+    console.log('Logout successful.')
   } catch (err) {
     console.error('Logout error:', err)
   }

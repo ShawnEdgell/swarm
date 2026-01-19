@@ -37,24 +37,12 @@ class LobbyStore {
   })
 
   constructor() {
-    console.log('🚀 [Lobby] Store Init. Project:', db.app.options.projectId)
-
-    // 1. START SYNC IMMEDIATELY
-    // This allows public users (unauthenticated) to see the list
     this.start()
 
-    // 2. Auth listener is now ONLY for managing the local user session/heartbeat
     if (!this.authUnsubscribe) {
       this.authUnsubscribe = onAuthStateChanged(auth, (user) => {
-        if (user) {
-          console.log('👤 [Lobby] User logged in:', user.uid)
-        } else {
-          console.warn('⏳ [Lobby] Logged out / Public view')
-          // Stop heartbeats if the user logs out while hosting
-          if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval)
-            this.heartbeatInterval = null
-          }
+        if (!user) {
+          this.stopHeartbeat()
         }
       })
     }
@@ -64,40 +52,41 @@ class LobbyStore {
     }, 10000)
   }
 
-  // We no longer call stop() on logout because we want to keep seeing the list!
-  // This just cleans up the Firestore listener if the component is destroyed.
   cleanup() {
     if (this.unsubscribe) {
       this.unsubscribe()
       this.unsubscribe = null
     }
+    this.stopHeartbeat()
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval)
+      this.heartbeatInterval = null
+    }
   }
 
   async forceReconnect() {
     try {
-      console.log('🔌 [Lobby] Forcing network reset...')
       await disableNetwork(db)
       await enableNetwork(db)
-      console.log('🔌 [Lobby] Network reset complete.')
     } catch (e) {
-      console.warn('🔌 [Lobby] Reconnect ignored (likely app closing)')
+      console.warn('🔌 [Lobby] Reconnect ignored')
     }
   }
 
   start() {
     if (this.unsubscribe) return
-
     const q = query(collection(db, 'users'), where('isHosting', '==', true))
 
     this.unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        console.log(`📥 [Lobby] Public Sync Success! Hosts: ${snapshot.docs.length}`)
         this.rawUsers = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
         this.loading = false
       },
       async (error) => {
-        console.error('❌ [Lobby] Firestore Error:', error.code, error.message)
         if (error.code === 'unavailable' || error.message.includes('offline')) {
           await this.forceReconnect()
         }
@@ -105,47 +94,47 @@ class LobbyStore {
     )
   }
 
-  async setHosting(uid: string, isHosting: boolean, userData: any = {}) {
-    // Hosting still requires a login
-    if (!auth.currentUser) {
-      console.error('❌ [Lobby] Auth required to host.')
-      return
-    }
+  async setHosting(uid: string, isHosting: boolean, userData: any = null) {
+    if (!auth.currentUser) return
+
+    const userRef = doc(db, 'users', uid)
+    this.stopHeartbeat()
 
     const currentUser = get(userStore)
-    const userRef = doc(db, 'users', uid)
 
+    // 1. Build the base payload WITHOUT tags first
     const payload: any = {
       isHosting,
       lastSeen: serverTimestamp(),
-      displayName: userData.displayName || currentUser?.name || 'Skater',
-      photoURL: userData.photoURL || currentUser?.avatar || '',
+      displayName: userData?.displayName || currentUser?.name || 'Skater',
+      eaUsername: userData?.eaUsername || currentUser?.eaUsername || '',
+      note: userData?.note || currentUser?.note || '',
+      photoURL: userData?.photoURL || currentUser?.avatar || '',
       uid: uid,
-      ...(isHosting ? { startedAt: serverTimestamp() } : {}),
-      eaUsername: userData.eaUsername || '',
-      note: userData.note || '',
-      tags: userData.tags || [],
-      role: userData.role || 'user',
       platform: 'desktop'
     }
 
+    // 2. THE TAG SHIELD:
+    // We ONLY add the tags to the payload if we actually have them.
+    // If we don't have them (like during logout), we don't send the 'tags' key AT ALL.
+    const tagsToSave = userData?.tags || currentUser?.tags
+
+    if (tagsToSave && tagsToSave.length > 0) {
+      payload.tags = tagsToSave
+    }
+
     try {
+      // Because 'tags' is missing from the payload during logout,
+      // { merge: true } will keep the old tags in the DB!
       await setDoc(userRef, payload, { merge: true })
-      console.log('✅ [Lobby] Status Updated:', isHosting ? 'Hosting' : 'Offline')
 
       if (isHosting) {
-        if (this.heartbeatInterval) clearInterval(this.heartbeatInterval)
         this.heartbeatInterval = setInterval(() => {
           setDoc(userRef, { lastSeen: serverTimestamp() }, { merge: true })
         }, 60000)
-      } else {
-        if (this.heartbeatInterval) {
-          clearInterval(this.heartbeatInterval)
-          this.heartbeatInterval = null
-        }
       }
     } catch (err: any) {
-      if (err.message.includes('offline')) await this.forceReconnect()
+      console.error('Hosting error:', err)
     }
   }
 }

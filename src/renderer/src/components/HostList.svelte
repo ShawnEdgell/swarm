@@ -98,7 +98,7 @@
               <div class="flex items-center gap-2">
                 <div class="text-right">
                   <p
-                    class="text-[9px] font-black uppercase tracking-widest italic leading-none opacity-40"
+                    class="text-[9px] font-black uppercase tracking-widest italic leading-none opacity-80 text-white"
                   >
                     {user.name || user.displayName || 'Skater'}
                   </p>
