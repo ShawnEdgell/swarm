@@ -19,7 +19,7 @@ let mainWindow: BrowserWindow
 let overlayWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isOverlayVisible = false
-let isQuitting = false // Flag to differentiate between closing the window and exiting the app
+let isQuitting = false
 
 function checkUpdates(): void {
   if (!is.dev) {
@@ -40,77 +40,83 @@ function checkUpdates(): void {
   })
 }
 
-// System Tray Setup
 function createTray(): void {
-  // Make sure you have an icon.png in your resources folder!
-  const iconPath = is.dev
-    ? join(__dirname, '../../resources/icon.png')
-    : join(process.resourcesPath, 'icon.png')
+  // --- THE FIX: Don't create a second tray if one exists ---
+  if (tray) return
 
-  tray = new Tray(iconPath)
-  const contextMenu = Menu.buildFromTemplate([
-    { label: 'Show App', click: () => mainWindow.show() },
-    { type: 'separator' },
-    {
-      label: 'Exit Completely',
-      click: () => {
-        isQuitting = true
-        app.quit()
+  try {
+    const iconPath = is.dev
+      ? join(__dirname, '../../resources/icon.png')
+      : join(process.resourcesPath, 'icon.png')
+
+    tray = new Tray(iconPath)
+    const contextMenu = Menu.buildFromTemplate([
+      { label: 'Show App', click: () => mainWindow.show() },
+      { type: 'separator' },
+      {
+        label: 'Exit Completely',
+        click: () => {
+          isQuitting = true
+          app.quit()
+        }
       }
-    }
-  ])
+    ])
 
-  tray.setToolTip('The Swarm')
-  tray.setContextMenu(contextMenu)
-  tray.on('click', () => {
-    mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show()
-  })
+    tray.setToolTip('The Swarm')
+    tray.setContextMenu(contextMenu)
+    tray.on('click', () => {
+      mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show()
+    })
+  } catch (error) {
+    console.error('Tray failed to initialize:', error)
+  }
 }
 
 function createOverlayWindow(): void {
-  // Calculate Bottom-Left positioning based on screen size
-  const primaryDisplay = screen.getPrimaryDisplay()
-  const { height } = primaryDisplay.workAreaSize
-  const overlayWidth = 400
-  const overlayHeight = 600
+  try {
+    const primaryDisplay = screen.getPrimaryDisplay()
+    const { height } = primaryDisplay.workAreaSize
+    const overlayWidth = 400
+    const overlayHeight = 600
 
-  overlayWindow = new BrowserWindow({
-    width: overlayWidth,
-    height: overlayHeight,
-    x: 20, // 20px padding from left
-    y: height - overlayHeight - 20, // 20px padding from bottom taskbar
-    transparent: true,
-    frame: false,
-    alwaysOnTop: true,
-    show: false,
-    skipTaskbar: true,
-    resizable: false,
-    hasShadow: false,
-    thickFrame: false,
-    paintWhenInitiallyHidden: true,
-    backgroundColor: '#00000000',
-    webPreferences: {
-      sandbox: false,
-      preload: join(__dirname, '../preload/index.js'),
-      devTools: true
+    overlayWindow = new BrowserWindow({
+      width: overlayWidth,
+      height: overlayHeight,
+      x: 20,
+      y: height - overlayHeight - 20,
+
+      // --- THE FIXES ---
+      parent: mainWindow, // Tells Windows this window belongs to the main app
+      skipTaskbar: true, // Now this will be strictly enforced
+      type: 'toolbar', // Hint to the OS that this is a utility window
+      // -----------------
+
+      transparent: true,
+      frame: false,
+      alwaysOnTop: true,
+      show: false,
+      resizable: false,
+      hasShadow: false,
+      thickFrame: false,
+      paintWhenInitiallyHidden: true,
+      backgroundColor: '#00000000',
+      webPreferences: {
+        sandbox: false,
+        preload: join(__dirname, '../preload/index.js'),
+        devTools: true
+      }
+    })
+
+    overlayWindow.setMenuBarVisibility(false)
+    overlayWindow.setIgnoreMouseEvents(true, { forward: true })
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      overlayWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/#/overlay`)
+    } else {
+      overlayWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/overlay' })
     }
-  })
-
-  overlayWindow.setMenuBarVisibility(false)
-  overlayWindow.setIgnoreMouseEvents(true, { forward: true })
-
-  // F12 for Overlay
-  overlayWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.key === 'F12' && input.type === 'keyDown') {
-      overlayWindow?.webContents.toggleDevTools()
-      event.preventDefault()
-    }
-  })
-
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    overlayWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/#/overlay`)
-  } else {
-    overlayWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/overlay' })
+  } catch (error) {
+    console.error('Overlay failed to initialize:', error)
   }
 }
 
@@ -127,7 +133,6 @@ function createWindow(): void {
     }
   })
 
-  // F12 for Main Window
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.key === 'F12' && input.type === 'keyDown') {
       mainWindow.webContents.toggleDevTools()
@@ -148,23 +153,24 @@ function createWindow(): void {
     callback({ cancel: false, responseHeaders })
   })
 
-  // Prevent App from closing, hide it instead
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault()
       mainWindow.hide()
     } else {
-      // Send closing signal to Firebase only when actually quitting
       mainWindow.webContents.send('app-closing')
     }
   })
 
+  // FORCE THE SHOW
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
-    checkUpdates()
+    mainWindow.focus()
+
+    // Initialize extras only after main window is ready
+    createTray()
     createOverlayWindow()
-    overlayWindow?.show()
-    overlayWindow?.setOpacity(0)
+    checkUpdates()
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -178,21 +184,20 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.swarm.app')
 
   createTray()
+
   createWindow()
 
-  // F8 TOGGLE
   globalShortcut.register('F8', () => {
     if (!overlayWindow) return
     isOverlayVisible = !isOverlayVisible
     if (isOverlayVisible) {
       overlayWindow.setOpacity(1.0)
+      overlayWindow.show() // Explicitly call show
       overlayWindow.setIgnoreMouseEvents(false)
-      overlayWindow.focus()
     } else {
       overlayWindow.setOpacity(0.0)
       overlayWindow.setIgnoreMouseEvents(true, { forward: true })
     }
-    overlayWindow.webContents.send('overlay-focus-changed', isOverlayVisible)
   })
 
   ipcMain.on('start-twitch-auth', (_, data: { clientId: string }) => {
@@ -203,21 +208,17 @@ app.whenReady().then(() => {
       modal: true,
       autoHideMenuBar: true
     })
-
     const redirectUri = 'http://localhost/callback'
     const scopes = encodeURIComponent('user:read:email chat:read chat:edit')
     const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${data.clientId}&redirect_uri=${redirectUri}&response_type=token&scope=${scopes}`
 
     authWindow.loadURL(authUrl)
-
     authWindow.webContents.on('will-navigate', (event, url) => {
       if (url.startsWith(redirectUri)) {
         event.preventDefault()
         const params = new URLSearchParams(url.split('#')[1])
         const token = params.get('access_token')
-        if (token) {
-          mainWindow.webContents.send('twitch-token-received', token)
-        }
+        if (token) mainWindow.webContents.send('twitch-token-received', token)
         authWindow.close()
       }
     })
