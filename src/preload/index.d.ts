@@ -3,6 +3,9 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 declare global {
   interface Window {
     electron: ElectronAPI
-    api: unknown
+    api: {
+      startTwitchAuth: (clientId: string) => void
+      onTwitchToken: (callback: (token: string) => void) => void
+    }
   }
 }

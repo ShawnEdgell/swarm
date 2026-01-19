@@ -1,15 +1,12 @@
-import adapter from '@sveltejs/adapter-static'
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte'
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-  // Consult https://svelte.dev/docs#compile-time-svelte-preprocess
   preprocess: vitePreprocess(),
-
-  kit: {
-    adapter: adapter({
-      fallback: 'index.html'
-    })
+  compilerOptions: {
+    // This forces Svelte 5 to be modern, but helps
+    // clear out the 'new App' instantiation error.
+    runes: true
   }
 }
 

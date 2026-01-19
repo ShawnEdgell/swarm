@@ -1,10 +1,21 @@
-import { defineConfig } from 'electron-vite'
+import { resolve } from 'path'
+import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
-
+import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
-  main: {},
-  preload: {},
+  main: {
+    plugins: [externalizeDepsPlugin()]
+  },
+  preload: {
+    plugins: [externalizeDepsPlugin()]
+  },
   renderer: {
-    plugins: [svelte()]
+    plugins: [tailwindcss(), svelte()],
+    resolve: {
+      alias: {
+        '@renderer': resolve('src/renderer/src'),
+        $lib: resolve('src/renderer/src/lib')
+      }
+    }
   }
 })

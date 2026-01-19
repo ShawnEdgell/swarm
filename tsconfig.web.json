@@ -7,6 +7,12 @@
     "src/preload/*.d.ts"
   ],
   "compilerOptions": {
+    "composite": true,
+    "baseUrl": ".",
+    "paths": {
+      "@renderer/*": ["src/renderer/src/*"],
+      "$lib/*": ["src/renderer/src/lib/*"]
+    },
     "verbatimModuleSyntax": true,
     "useDefineForClassFields": true,
     "strict": false,
