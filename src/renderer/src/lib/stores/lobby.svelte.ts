@@ -1,4 +1,6 @@
-import { db } from '$lib/firebase'
+import { db, auth } from '$lib/firebase'
+import { user as userStore } from './user'
+import { get } from 'svelte/store'
 import {
   collection,
   query,
@@ -14,28 +16,25 @@ class LobbyStore {
   loading = $state(true)
   now = $state(Date.now())
   private unsubscribe: (() => void) | null = null
+  private heartbeatInterval: any = null // Added this inside the class
 
-  // This fixes the "Property onlineUsers does not exist" error
   onlineUsers = $derived.by(() => {
     return this.rawUsers
       .filter((u) => {
         if (!u.lastSeen) return true
-        // Convert Firestore timestamp to JS Date if needed
         const lastSeenDate = u.lastSeen.toDate ? u.lastSeen.toDate() : new Date(u.lastSeen)
         const diffMinutes = (this.now - lastSeenDate.getTime()) / 1000 / 60
-        return diffMinutes < 5 // Only show users active in the last 5 minutes
+        // We'll keep this at 10 mins as a "safety net" for crashes
+        return diffMinutes < 10
       })
       .sort((a, b) => {
-        // Sort by role importance then by recency
         const getScore = (u: any) => (u.role === 'admin' ? 100 : u.role === 'host' ? 50 : 10)
         return getScore(b) - getScore(a) || (b.lastSeen?.seconds || 0) - (a.lastSeen?.seconds || 0)
       })
   })
 
   constructor() {
-    // Start syncing data immediately for public browsing
     this.start()
-
     setInterval(() => {
       this.now = Date.now()
     }, 10000)
@@ -43,9 +42,7 @@ class LobbyStore {
 
   start() {
     if (this.unsubscribe) return
-
     const q = query(collection(db, 'users'), where('isHosting', '==', true))
-
     this.unsubscribe = onSnapshot(
       q,
       (snapshot) => {
@@ -59,16 +56,48 @@ class LobbyStore {
   }
 
   async setHosting(uid: string, isHosting: boolean, userData: any = {}) {
+    if (auth.currentUser?.uid !== uid) {
+      console.error('Auth mismatch!')
+      return
+    }
+
+    const currentUser = get(userStore)
     const userRef = doc(db, 'users', uid)
-    await setDoc(
-      userRef,
-      {
-        ...userData,
-        isHosting,
-        lastSeen: serverTimestamp()
-      },
-      { merge: true }
-    )
+
+    const payload: any = {
+      isHosting,
+      lastSeen: serverTimestamp(),
+      name: userData.name || currentUser?.name || 'Skater',
+      avatar: userData.avatar || currentUser?.avatar || ''
+    }
+
+    if (userData.eaUsername || currentUser?.eaUsername) {
+      payload.eaUsername = userData.eaUsername || currentUser?.eaUsername
+    }
+    if (userData.note || currentUser?.note) {
+      payload.note = userData.note || currentUser?.note
+    }
+
+    // --- HEARTBEAT LOGIC ---
+    if (isHosting) {
+      if (this.heartbeatInterval) clearInterval(this.heartbeatInterval)
+      this.heartbeatInterval = setInterval(() => {
+        console.log('💓 Heartbeat: Pinging server...')
+        this.setHosting(uid, true, userData)
+      }, 60000)
+    } else {
+      if (this.heartbeatInterval) {
+        clearInterval(this.heartbeatInterval)
+        this.heartbeatInterval = null
+      }
+    }
+
+    try {
+      await setDoc(userRef, payload, { merge: true })
+      console.log('✅ Hosting updated for:', payload.name)
+    } catch (err) {
+      console.error('Firestore Permission Denied.', err)
+    }
   }
 }
 

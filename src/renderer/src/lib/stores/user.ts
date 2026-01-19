@@ -19,19 +19,22 @@ if (window.api?.onTwitchToken) {
 
       const twitchUser = data[0]
 
-      // Sign in to Firebase to unlock Firestore
-      await signInAnonymously(auth)
+      // 1. Sign in to Firebase FIRST
+      const userCredential = await signInAnonymously(auth)
+      const firebaseUid = userCredential.user.uid // This is your REAL ID
 
-      // Set the user store with normalized data
+      // 2. Set the store using the Firebase UID so Firestore rules pass
       user.set({
-        uid: twitchUser.id,
-        displayName: twitchUser.display_name,
-        photoURL: twitchUser.profile_image_url,
-        roles: [], // Prevents 'undefined' errors
-        ...twitchUser
+        uid: firebaseUid,
+        twitchId: twitchUser.id,
+        name: twitchUser.display_name, // Standardized
+        avatar: twitchUser.profile_image_url, // Standardized
+        eaUsername: '', // Initialize to avoid 'undefined'
+        note: '',
+        role: 'user' // Default role
       })
 
-      console.log('Logged in and Identity Synced!')
+      console.log('Logged in with ID:', firebaseUid)
     } catch (e) {
       console.error('Auth Sync Failed:', e)
     }

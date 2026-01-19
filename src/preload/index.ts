@@ -4,7 +4,10 @@ import { electronAPI } from '@electron-toolkit/preload'
 const api = {
   // Expose a clean way for the renderer to listen for the token
   onTwitchToken: (callback: (token: string) => void) =>
-    ipcRenderer.on('twitch-token-received', (_event, token) => callback(token))
+    ipcRenderer.on('twitch-token-received', (_event, token) => callback(token)),
+
+  // NEW: Listen for the app-closing signal from the Main process
+  onAppClosing: (callback: () => void) => ipcRenderer.on('app-closing', () => callback())
 }
 
 if (process.contextIsolated) {

@@ -1,6 +1,31 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, is } from '@electron-toolkit/utils'
+import { autoUpdater } from 'electron-updater'
+
+// Configure updater logging
+autoUpdater.autoDownload = true
+autoUpdater.logger = require('electron-log')
+
+function checkUpdates(): void {
+  if (!is.dev) {
+    autoUpdater.checkForUpdatesAndNotify()
+  }
+
+  autoUpdater.on('update-downloaded', () => {
+    dialog
+      .showMessageBox({
+        type: 'info',
+        title: 'Update Ready',
+        message: 'A new version of The Swarm has been downloaded. Restart to apply?',
+        buttons: ['Restart', 'Later'],
+        defaultId: 0
+      })
+      .then((result) => {
+        if (result.response === 0) autoUpdater.quitAndInstall()
+      })
+  })
+}
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -11,13 +36,21 @@ function createWindow(): void {
     webPreferences: {
       sandbox: false,
       preload: join(__dirname, '../preload/index.js'),
-      devTools: true // Keep this true so we don't get locked out
+      devTools: true
     }
   })
 
-  mainWindow.on('ready-to-show', () => mainWindow.show())
+  mainWindow.on('ready-to-show', () => {
+    mainWindow.show()
+    checkUpdates()
+  })
 
-  // Force open DevTools on start while we are refactoring
+  // --- FORCE OFFLINE ON CLOSE ---
+  mainWindow.on('close', () => {
+    // Tells the Svelte side to run its logout/unhost cleanup
+    mainWindow.webContents.send('app-closing')
+  })
+
   if (is.dev) mainWindow.webContents.openDevTools()
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -28,14 +61,12 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.electron')
+  electronApp.setAppUserModelId('com.swarm.app')
 
-  // Handle the Login Request
   ipcMain.on('start-twitch-auth', (_, data: { clientId: string }) => {
     const wins = BrowserWindow.getAllWindows()
     if (wins.length > 0) {
       const mainWindow = wins[0]
-
       const authWindow = new BrowserWindow({
         width: 600,
         height: 800,
@@ -47,26 +78,34 @@ app.whenReady().then(() => {
 
       const redirectUri = 'http://localhost/callback'
       const scopes = encodeURIComponent('user:read:email chat:read chat:edit')
-      // response_type=token is the key here. No nonce needed.
       const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${data.clientId}&redirect_uri=${redirectUri}&response_type=token&scope=${scopes}`
 
       authWindow.loadURL(authUrl)
 
-      // Intercept the redirect
       authWindow.webContents.on('will-navigate', (event, url) => {
         if (url.startsWith(redirectUri)) {
           event.preventDefault()
           const params = new URLSearchParams(url.split('#')[1])
           const token = params.get('access_token')
-
           if (token) {
             mainWindow.webContents.send('twitch-token-received', token)
           }
-          authWindow.close() // Focus returns to mainWindow
+          authWindow.close()
         }
       })
     }
   })
 
   createWindow()
+
+  app.on('activate', function () {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+})
+
+// Standard lifecycle: Quit when all windows are closed (except on macOS)
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit()
+  }
 })

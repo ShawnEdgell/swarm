@@ -1,6 +1,7 @@
 // src/renderer/src/lib/constants.ts
 
 export const AVAILABLE_TAGS = [
+  'Server Host',
   'Mic Required',
   'No Mic',
   'S.K.A.T.E',

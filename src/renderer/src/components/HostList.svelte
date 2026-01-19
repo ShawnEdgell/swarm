@@ -30,9 +30,9 @@
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-3 mb-2">
               <h3
-                class="font-black uppercase italic text-2xl tracking-tighter text-white leading-none"
+                class="font-black uppercase italic text-2xl tracking-tighter text-base-content leading-none"
               >
-                {user.eaUsername}
+                {user.eaUsername || 'NO EA ID'}
               </h3>
               {#if user.role === 'admin'}
                 <span class="badge badge-primary badge-xs font-black italic rounded-sm border-none"
@@ -45,7 +45,7 @@
               <div class="flex flex-wrap gap-2 mb-2">
                 {#each user.tags as tag (tag)}
                   <span
-                    class="bg-base-300 text-white/50 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border border-white/5"
+                    class="bg-base-300 text-base-content/50 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border border-white/5"
                   >
                     {tag}
                   </span>
@@ -54,7 +54,7 @@
             {/if}
 
             {#if user.note}
-              <p class="text-sm font-medium italic opacity-80">
+              <p class="text-sm font-medium italic text-base-content/70">
                 "{user.note}"
               </p>
             {/if}
@@ -65,9 +65,9 @@
               <span
                 class="text-[9px] font-black uppercase tracking-widest italic leading-none opacity-40"
               >
-                {user.name}
+                {user.name || user.displayName || 'Skater'}
               </span>
-              <img src={user.avatar} alt="" class="w-5 h-5 rounded" />
+              <img src={user.avatar || user.photoURL} alt="" class="w-5 h-5 rounded bg-base-300" />
             </div>
 
             <div class="flex gap-1">

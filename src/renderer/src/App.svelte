@@ -4,6 +4,7 @@
   import { lobbyStore } from '$lib/stores/lobby.svelte'
   import { db } from '$lib/firebase'
   import { doc, onSnapshot, getDoc, setDoc } from 'firebase/firestore'
+  import { get } from 'svelte/store'
 
   // Components
   import ControlBar from './components/ControlBar.svelte'
@@ -27,9 +28,18 @@
   onMount(() => {
     let unsubMe: (() => void) | null = null
 
+    // --- FORCE OFFLINE ON APP CLOSE ---
+    if (window.api?.onAppClosing) {
+      window.api.onAppClosing(async () => {
+        const currentUser = get(user)
+        if (currentUser?.uid) {
+          console.log('Detected app closure, forcing host offline...')
+          await lobbyStore.setHosting(currentUser.uid, false)
+        }
+      })
+    }
+
     const unsubUser = user.subscribe((u) => {
-      // FIX: Only clear the state if we are CERTAIN the user is gone.
-      // If 'u' is null, wait a heartbeat or check if we're in the middle of a hosting transition.
       if (!u) {
         if (unsubMe) {
           unsubMe()
@@ -38,12 +48,12 @@
         return
       }
 
-      // If we have a user, set up the real-time listener for their profile
+      // Set up the real-time listener for the user's Firestore profile
       if (u.uid && !unsubMe) {
         unsubMe = onSnapshot(doc(db, 'users', u.uid), (snap) => {
-          if (!snap.exists()) return // Prevent crashes on new accounts
+          if (!snap.exists()) return
           const data = snap.data() || {}
-          myRole = data.role || ''
+          myRole = data.role || 'user'
           currentEAUsername = data.eaUsername || ''
           currentTags = data.tags || []
           currentNote = data.note || ''
@@ -63,6 +73,7 @@
     const snap = await getDoc(doc(db, 'users', $user.uid))
     const userData = snap.data() || {}
 
+    // If starting a host, ensure EA ID is set
     if (!isSkating) {
       if (!snap.exists() || !userData.eaUsername) {
         showEASetup = true
@@ -70,15 +81,17 @@
       }
     }
 
+    // Standardized property names to match store/lobby logic
     lobbyStore.setHosting($user.uid, !isSkating, {
-      name: $user.displayName,
-      avatar: $user.photoURL,
+      name: $user.name,
+      avatar: $user.avatar,
       eaUsername: userData.eaUsername || currentEAUsername,
-      role: myRole || 'user'
+      role: myRole || 'user',
+      tags: currentTags,
+      note: currentNote
     })
   }
 
-  // Custom logout handler to ensure unhosting happens before signout
   async function handleLogout() {
     if (isSkating && $user?.uid) {
       await lobbyStore.setHosting($user.uid, false)
@@ -87,7 +100,7 @@
   }
 </script>
 
-<div class="h-screen flex flex-col bg-base-300 text-base-content overflow-hidden">
+<div class="h-screen flex flex-col bg-base-300 text-base-content overflow-hidden font-sans">
   <header class="navbar shrink-0 px-6 border-b border-white/5 bg-base-200/50 backdrop-blur">
     <div class="flex-1">
       <div class="flex flex-col">
@@ -101,8 +114,8 @@
         <div
           class="flex items-center gap-3 bg-base-100 px-3 py-1.5 rounded-full border border-white/5"
         >
-          <div class="w-2 h-2 rounded-full bg-success"></div>
-          <span class="text-[10px] font-bold uppercase tracking-widest">{$user.displayName}</span>
+          <div class="w-2 h-2 rounded-full bg-success animate-pulse"></div>
+          <span class="text-[10px] font-bold uppercase tracking-widest">{$user.name}</span>
           <button onclick={handleLogout} class="btn btn-ghost btn-xs uppercase font-bold text-error"
             >Sign Out</button
           >
@@ -124,7 +137,7 @@
     >
       <div class="p-4 border-b border-white/5 flex items-center justify-between bg-base-200/50">
         <h2 class="text-[10px] font-black uppercase tracking-[0.2em] opacity-50">Live Comms</h2>
-        <span class="badge badge-secondary badge-outline text-[9px] font-bold">TWITCH</span>
+        <span class="badge badge-secondary badge-outline text-[9px] font-bold italic">TWITCH</span>
       </div>
       <div class="flex-1 bg-black">
         <TwitchChat channel="stillmilky" />
@@ -141,13 +154,14 @@
                 fill="none"
                 viewBox="0 0 24 24"
                 class="stroke-info shrink-0 w-6 h-6"
-                ><path
+              >
+                <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
                   stroke-width="2"
                   d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                ></path></svg
-              >
+                ></path>
+              </svg>
               <span class="text-[10px] font-black uppercase tracking-widest opacity-70 italic">
                 Twitch Login required to host sessions
               </span>
@@ -168,9 +182,9 @@
           <div class="flex items-center gap-4 mb-4">
             <h2 class="text-[11px] font-black uppercase tracking-[0.3em]">Available Sessions</h2>
             <div class="h-px flex-1 bg-white/5"></div>
-            <span class="badge badge-neutral badge-sm font-mono opacity-50 uppercase text-[9px]"
-              >{lobbyStore.onlineUsers.length} active</span
-            >
+            <span class="badge badge-neutral badge-sm font-mono opacity-50 uppercase text-[9px]">
+              {lobbyStore.onlineUsers.length} active
+            </span>
           </div>
 
           {#if lobbyStore.loading}
@@ -201,18 +215,23 @@
     onSave={async (data) => {
       const profileData = {
         eaUsername: data.username,
-        tags: data.tags, // Array of max 3 strings
+        tags: data.tags,
         note: data.note
       }
+
+      // Save profile metadata
       await setDoc(doc(db, 'users', $user.uid), profileData, { merge: true })
 
-      lobbyStore.setHosting($user.uid, true, {
-        name: $user.displayName,
-        avatar: $user.photoURL,
+      // Trigger the host status update
+      await lobbyStore.setHosting($user.uid, true, {
+        name: $user.name,
+        avatar: $user.avatar,
         eaUsername: data.username,
         role: myRole || 'user',
-        tags: data.tags // Ensure these are passed to the lobby
+        tags: data.tags,
+        note: data.note
       })
+
       showEASetup = false
     }}
   />

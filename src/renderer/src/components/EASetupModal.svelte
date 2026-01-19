@@ -47,8 +47,8 @@
 
 {#if show}
   <dialog open class="modal modal-bottom sm:modal-middle backdrop-blur-md">
-    <div class="modal-box bg-base-300 border border-white/5 p-8 shadow-2xl max-w-md">
-      <div class="mb-8">
+    <div class="modal-box bg-base-300 border border-white/5 p-6 shadow-2xl max-w-md">
+      <div class="mb-4">
         <h3 class="font-black italic text-2xl uppercase tracking-tighter leading-none">
           Session Setup
         </h3>
@@ -57,7 +57,7 @@
         </p>
       </div>
 
-      <div class="space-y-6">
+      <div class="space-y-4">
         <div>
           <label class="label pt-0 pb-2" for="ea-id">
             <span class="label-text text-[10px] font-black uppercase opacity-50 tracking-widest"
@@ -111,7 +111,7 @@
         </div>
       </div>
 
-      <div class="mt-12 pt-6 border-t border-white/5 flex justify-end gap-3">
+      <div class="mt-4 flex justify-end gap-3">
         <button
           class="btn btn-ghost btn-sm uppercase font-black italic opacity-40 hover:opacity-100"
           onclick={() => (show = false)}
@@ -119,7 +119,7 @@
           Cancel
         </button>
         <button
-          class="btn btn-primary btn-sm px-8 uppercase font-black italic shadow-lg"
+          class="btn btn-primary btn-sm px-4 uppercase font-black italic shadow-lg"
           onclick={handleSave}
         >
           Save Profile

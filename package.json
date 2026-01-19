@@ -1,6 +1,28 @@
 {
   "name": "swarm",
   "version": "1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ShawnEdgell/swarm.git"
+  },
+  "build": {
+    "appId": "com.swarm.app",
+    "productName": "The Swarm",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ShawnEdgell",
+        "repo": "swarm"
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
   "description": "An Electron application with Svelte and TypeScript",
   "main": "./out/main/index.js",
   "author": "example.com",
@@ -25,7 +47,8 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@tailwindcss/vite": "^4.1.18",
     "daisyui": "^5.5.14",
-    "electron-updater": "^6.3.9",
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.7.3",
     "firebase": "^12.8.0",
     "tmi.js": "^1.8.5"
   },
