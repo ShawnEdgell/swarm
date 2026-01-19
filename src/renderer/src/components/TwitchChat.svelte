@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { user } from '$lib/stores/user' // Import your user store
+  import { user } from '$lib/stores/user'
 
   let { channel = 'stillmilky' } = $props<{ channel?: string }>()
 
-  // If $user exists, load the standard chat.
-  // If $user is null, we add '&identity=guest' or simply force a non-interactive mode.
+  // parent=localhost is required for the embed to work in Electron
   const chatUrl = $derived(
     $user
       ? `https://www.twitch.tv/embed/${channel}/chat?parent=localhost&darkpopout=true`
@@ -20,7 +19,7 @@
       src={chatUrl}
       height="100%"
       width="100%"
-      frameborder="0"
+      class="border-none"
     ></iframe>
   {/key}
 </div>

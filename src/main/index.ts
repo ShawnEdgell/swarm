@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, session } from 'electron'
 import { join } from 'path'
 import { electronApp, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
@@ -40,6 +40,22 @@ function createWindow(): void {
     }
   })
 
+  // --- TWITCH CHAT FIX: STRIP SECURITY HEADERS ---
+  // This removes Twitch's "do not embed" instructions before Electron sees them.
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    if (details.url.includes('twitch.tv')) {
+      const responseHeaders = { ...details.responseHeaders }
+
+      // Delete the specific headers that block the iframe
+      delete responseHeaders['content-security-policy']
+      delete responseHeaders['x-frame-options']
+
+      callback({ cancel: false, responseHeaders })
+      return
+    }
+    callback({ cancel: false, responseHeaders: details.responseHeaders })
+  })
+
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
     checkUpdates()
@@ -47,7 +63,6 @@ function createWindow(): void {
 
   // --- FORCE OFFLINE ON CLOSE ---
   mainWindow.on('close', () => {
-    // Tells the Svelte side to run its logout/unhost cleanup
     mainWindow.webContents.send('app-closing')
   })
 
@@ -103,7 +118,6 @@ app.whenReady().then(() => {
   })
 })
 
-// Standard lifecycle: Quit when all windows are closed (except on macOS)
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
