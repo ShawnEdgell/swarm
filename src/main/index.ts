@@ -5,10 +5,21 @@ import { autoUpdater } from 'electron-updater'
 
 autoUpdater.autoDownload = true
 
-let mainWindow: BrowserWindow
+let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
-// State to track if we are "conceptually" open
-let isOverlayVisible = false
+
+// --- FORCE SINGLE INSTANCE LOCK ---
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+}
 
 function checkUpdates(): void {
   if (!is.dev) {
@@ -46,12 +57,10 @@ function createOverlayWindow(): void {
       transparent: true,
       frame: false,
       alwaysOnTop: true,
-      // THE TRICK: Show it immediately, but invisible.
       show: true,
       opacity: 0,
       resizable: false,
       hasShadow: false,
-      // Start unfocusable so it doesn't steal game input on launch
       focusable: false,
       paintWhenInitiallyHidden: true,
       backgroundColor: '#00000000',
@@ -63,9 +72,11 @@ function createOverlayWindow(): void {
     })
 
     overlayWindow.setMenuBarVisibility(false)
-
-    // Start in "Ghost Mode" (Invisible + Click-through)
     overlayWindow.setIgnoreMouseEvents(true, { forward: true })
+
+    overlayWindow.on('closed', () => {
+      overlayWindow = null
+    })
 
     if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
       overlayWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/#/overlay`)
@@ -92,14 +103,13 @@ function createWindow(): void {
 
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.key === 'F12' && input.type === 'keyDown') {
-      mainWindow.webContents.toggleDevTools()
+      mainWindow!.webContents.toggleDevTools()
       event.preventDefault()
     }
   })
 
-  if (is.dev) {
-    mainWindow.webContents.openDevTools({ mode: 'detach' })
-  }
+  // FIX 1: Added '!' to verify mainWindow exists
+  if (is.dev) mainWindow!.webContents.openDevTools({ mode: 'detach' })
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const responseHeaders = { ...details.responseHeaders }
@@ -110,13 +120,22 @@ function createWindow(): void {
     callback({ cancel: false, responseHeaders })
   })
 
+  // FIX 2: Removed unused 'e' parameter
   mainWindow.on('close', () => {
-    mainWindow.webContents.send('app-closing')
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.destroy()
+    }
+    overlayWindow = null
+  })
+
+  mainWindow.on('closed', () => {
+    mainWindow = null
+    app.quit()
   })
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-    mainWindow.focus()
+    mainWindow!.show()
+    mainWindow!.focus()
     createOverlayWindow()
     checkUpdates()
   })
@@ -132,35 +151,27 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.swarm.app')
   createWindow()
 
-  // --- THE "CLEVER" TOGGLE ---
+  let isOverlayVisible = false
+
   globalShortcut.register('F8', () => {
-    if (!overlayWindow) return
+    if (!overlayWindow || overlayWindow.isDestroyed()) return
 
     isOverlayVisible = !isOverlayVisible
 
     if (isOverlayVisible) {
-      // OPEN:
-      // 1. Make it focusable so you can click/scroll
       overlayWindow.setFocusable(true)
-      // 2. Force it to top (critical for full-screen games)
       overlayWindow.setAlwaysOnTop(true, 'screen-saver')
-      // 3. Catch mouse events
       overlayWindow.setIgnoreMouseEvents(false)
-      // 4. Instant visibility (no repaint needed)
       overlayWindow.setOpacity(1.0)
-      // 5. Focus it
       overlayWindow.focus()
     } else {
-      // CLOSE:
-      // 1. Instant invisibility
       overlayWindow.setOpacity(0.0)
-      // 2. Let mouse pass through to game
       overlayWindow.setIgnoreMouseEvents(true, { forward: true })
-      // 3. Make unfocusable so Alt+Tab ignores it
       overlayWindow.setFocusable(false)
-      // 4. Send focus back to OS (usually the game)
       overlayWindow.blur()
-      mainWindow.focus() // Optional: Helps some games regain context
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMinimized()) {
+        mainWindow.focus()
+      }
     }
   })
 
@@ -168,21 +179,20 @@ app.whenReady().then(() => {
     const authWindow = new BrowserWindow({
       width: 600,
       height: 800,
-      parent: mainWindow,
+      parent: mainWindow!,
       modal: true,
       autoHideMenuBar: true
     })
     const redirectUri = 'http://localhost/callback'
     const scopes = encodeURIComponent('user:read:email chat:read chat:edit')
     const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${data.clientId}&redirect_uri=${redirectUri}&response_type=token&scope=${scopes}`
-
     authWindow.loadURL(authUrl)
     authWindow.webContents.on('will-navigate', (event, url) => {
       if (url.startsWith(redirectUri)) {
         event.preventDefault()
         const params = new URLSearchParams(url.split('#')[1])
         const token = params.get('access_token')
-        if (token) mainWindow.webContents.send('twitch-token-received', token)
+        if (token && mainWindow) mainWindow.webContents.send('twitch-token-received', token)
         authWindow.close()
       }
     })
@@ -190,5 +200,5 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  app.quit()
 })
