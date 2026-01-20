@@ -1,14 +1,4 @@
-import {
-  app,
-  BrowserWindow,
-  ipcMain,
-  dialog,
-  session,
-  globalShortcut,
-  screen,
-  Tray,
-  Menu
-} from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, session, globalShortcut, screen } from 'electron'
 import { join } from 'path'
 import { electronApp, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
@@ -17,9 +7,7 @@ autoUpdater.autoDownload = true
 
 let mainWindow: BrowserWindow
 let overlayWindow: BrowserWindow | null = null
-let tray: Tray | null = null
 let isOverlayVisible = false
-let isQuitting = false
 
 function checkUpdates(): void {
   if (!is.dev) {
@@ -40,38 +28,6 @@ function checkUpdates(): void {
   })
 }
 
-function createTray(): void {
-  // --- THE FIX: Don't create a second tray if one exists ---
-  if (tray) return
-
-  try {
-    const iconPath = is.dev
-      ? join(__dirname, '../../resources/icon.png')
-      : join(process.resourcesPath, 'icon.png')
-
-    tray = new Tray(iconPath)
-    const contextMenu = Menu.buildFromTemplate([
-      { label: 'Show App', click: () => mainWindow.show() },
-      { type: 'separator' },
-      {
-        label: 'Exit Completely',
-        click: () => {
-          isQuitting = true
-          app.quit()
-        }
-      }
-    ])
-
-    tray.setToolTip('The Swarm')
-    tray.setContextMenu(contextMenu)
-    tray.on('click', () => {
-      mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show()
-    })
-  } catch (error) {
-    console.error('Tray failed to initialize:', error)
-  }
-}
-
 function createOverlayWindow(): void {
   try {
     const primaryDisplay = screen.getPrimaryDisplay()
@@ -84,13 +40,9 @@ function createOverlayWindow(): void {
       height: overlayHeight,
       x: 20,
       y: height - overlayHeight - 20,
-
-      // --- THE FIXES ---
-      parent: mainWindow, // Tells Windows this window belongs to the main app
-      skipTaskbar: true, // Now this will be strictly enforced
-      type: 'toolbar', // Hint to the OS that this is a utility window
-      // -----------------
-
+      parent: mainWindow,
+      skipTaskbar: true,
+      type: 'toolbar',
       transparent: true,
       frame: false,
       alwaysOnTop: true,
@@ -133,6 +85,7 @@ function createWindow(): void {
     }
   })
 
+  // F12 Shortcut
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.key === 'F12' && input.type === 'keyDown') {
       mainWindow.webContents.toggleDevTools()
@@ -144,6 +97,7 @@ function createWindow(): void {
     mainWindow.webContents.openDevTools({ mode: 'detach' })
   }
 
+  // Twitch CSP Fix
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const responseHeaders = { ...details.responseHeaders }
     if (details.url.includes('twitch.tv')) {
@@ -153,22 +107,15 @@ function createWindow(): void {
     callback({ cancel: false, responseHeaders })
   })
 
-  mainWindow.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault()
-      mainWindow.hide()
-    } else {
-      mainWindow.webContents.send('app-closing')
-    }
+  // STANDARD CLOSE LOGIC: X button kills the app
+  mainWindow.on('close', () => {
+    // Fire the cleanup event to Svelte
+    mainWindow.webContents.send('app-closing')
   })
 
-  // FORCE THE SHOW
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
     mainWindow.focus()
-
-    // Initialize extras only after main window is ready
-    createTray()
     createOverlayWindow()
     checkUpdates()
   })
@@ -183,16 +130,15 @@ function createWindow(): void {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.swarm.app')
 
-  createTray()
-
   createWindow()
 
+  // F8 Overlay Toggle
   globalShortcut.register('F8', () => {
     if (!overlayWindow) return
     isOverlayVisible = !isOverlayVisible
     if (isOverlayVisible) {
       overlayWindow.setOpacity(1.0)
-      overlayWindow.show() // Explicitly call show
+      overlayWindow.show()
       overlayWindow.setIgnoreMouseEvents(false)
     } else {
       overlayWindow.setOpacity(0.0)
@@ -200,6 +146,7 @@ app.whenReady().then(() => {
     }
   })
 
+  // Twitch Auth
   ipcMain.on('start-twitch-auth', (_, data: { clientId: string }) => {
     const authWindow = new BrowserWindow({
       width: 600,
