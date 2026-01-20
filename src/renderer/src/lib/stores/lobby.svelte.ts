@@ -22,6 +22,7 @@ class LobbyStore {
   private heartbeatInterval: any = null
   private authUnsubscribe: (() => void) | null = null
 
+  // Role-based sorting and 5-minute timeout filter
   onlineUsers = $derived.by(() => {
     return this.rawUsers
       .filter((u) => {
@@ -50,6 +51,23 @@ class LobbyStore {
     setInterval(() => {
       this.now = Date.now()
     }, 10000)
+  }
+
+  // --- NEW: Helper for App.svelte toggle button ---
+  async toggleHosting(user: any, currentlySkating: boolean) {
+    if (!user) return
+    await this.setHosting(user.uid, !currentlySkating, user)
+  }
+
+  // --- NEW: Helper for EASetupModal ---
+  async updateProfileAndHost(uid: string, data: any) {
+    const profile = {
+      eaUsername: data.username,
+      tags: data.tags,
+      note: data.note,
+      isHosting: true // Force hosting to true when they save setup
+    }
+    await this.setHosting(uid, true, profile)
   }
 
   cleanup() {
@@ -102,7 +120,6 @@ class LobbyStore {
 
     const currentUser = get(userStore)
 
-    // 1. Build the base payload WITHOUT tags first
     const payload: any = {
       isHosting,
       lastSeen: serverTimestamp(),
@@ -114,21 +131,16 @@ class LobbyStore {
       platform: 'desktop'
     }
 
-    // 2. THE TAG SHIELD:
-    // We ONLY add the tags to the payload if we actually have them.
-    // If we don't have them (like during logout), we don't send the 'tags' key AT ALL.
     const tagsToSave = userData?.tags || currentUser?.tags
-
     if (tagsToSave && tagsToSave.length > 0) {
       payload.tags = tagsToSave
     }
 
     try {
-      // Because 'tags' is missing from the payload during logout,
-      // { merge: true } will keep the old tags in the DB!
       await setDoc(userRef, payload, { merge: true })
 
       if (isHosting) {
+        // Start heartbeat to keep the user in the "onlineUsers" derived list
         this.heartbeatInterval = setInterval(() => {
           setDoc(userRef, { lastSeen: serverTimestamp() }, { merge: true })
         }, 60000)
