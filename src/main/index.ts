@@ -7,6 +7,7 @@ autoUpdater.autoDownload = true
 
 let mainWindow: BrowserWindow
 let overlayWindow: BrowserWindow | null = null
+// State to track if we are "conceptually" open
 let isOverlayVisible = false
 
 function checkUpdates(): void {
@@ -33,23 +34,25 @@ function createOverlayWindow(): void {
     const primaryDisplay = screen.getPrimaryDisplay()
     const { height } = primaryDisplay.workAreaSize
     const overlayWidth = 400
-    const overlayHeight = 600
+    const overlayHeight = 850
 
     overlayWindow = new BrowserWindow({
       width: overlayWidth,
       height: overlayHeight,
       x: 20,
       y: height - overlayHeight - 20,
-      parent: mainWindow,
       skipTaskbar: true,
       type: 'toolbar',
       transparent: true,
       frame: false,
       alwaysOnTop: true,
-      show: false,
+      // THE TRICK: Show it immediately, but invisible.
+      show: true,
+      opacity: 0,
       resizable: false,
       hasShadow: false,
-      thickFrame: false,
+      // Start unfocusable so it doesn't steal game input on launch
+      focusable: false,
       paintWhenInitiallyHidden: true,
       backgroundColor: '#00000000',
       webPreferences: {
@@ -60,6 +63,8 @@ function createOverlayWindow(): void {
     })
 
     overlayWindow.setMenuBarVisibility(false)
+
+    // Start in "Ghost Mode" (Invisible + Click-through)
     overlayWindow.setIgnoreMouseEvents(true, { forward: true })
 
     if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -85,7 +90,6 @@ function createWindow(): void {
     }
   })
 
-  // F12 Shortcut
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.key === 'F12' && input.type === 'keyDown') {
       mainWindow.webContents.toggleDevTools()
@@ -97,7 +101,6 @@ function createWindow(): void {
     mainWindow.webContents.openDevTools({ mode: 'detach' })
   }
 
-  // Twitch CSP Fix
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const responseHeaders = { ...details.responseHeaders }
     if (details.url.includes('twitch.tv')) {
@@ -107,9 +110,7 @@ function createWindow(): void {
     callback({ cancel: false, responseHeaders })
   })
 
-  // STANDARD CLOSE LOGIC: X button kills the app
   mainWindow.on('close', () => {
-    // Fire the cleanup event to Svelte
     mainWindow.webContents.send('app-closing')
   })
 
@@ -129,24 +130,40 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.swarm.app')
-
   createWindow()
 
-  // F8 Overlay Toggle
+  // --- THE "CLEVER" TOGGLE ---
   globalShortcut.register('F8', () => {
     if (!overlayWindow) return
+
     isOverlayVisible = !isOverlayVisible
+
     if (isOverlayVisible) {
-      overlayWindow.setOpacity(1.0)
-      overlayWindow.show()
+      // OPEN:
+      // 1. Make it focusable so you can click/scroll
+      overlayWindow.setFocusable(true)
+      // 2. Force it to top (critical for full-screen games)
+      overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+      // 3. Catch mouse events
       overlayWindow.setIgnoreMouseEvents(false)
+      // 4. Instant visibility (no repaint needed)
+      overlayWindow.setOpacity(1.0)
+      // 5. Focus it
+      overlayWindow.focus()
     } else {
+      // CLOSE:
+      // 1. Instant invisibility
       overlayWindow.setOpacity(0.0)
+      // 2. Let mouse pass through to game
       overlayWindow.setIgnoreMouseEvents(true, { forward: true })
+      // 3. Make unfocusable so Alt+Tab ignores it
+      overlayWindow.setFocusable(false)
+      // 4. Send focus back to OS (usually the game)
+      overlayWindow.blur()
+      mainWindow.focus() // Optional: Helps some games regain context
     }
   })
 
-  // Twitch Auth
   ipcMain.on('start-twitch-auth', (_, data: { clientId: string }) => {
     const authWindow = new BrowserWindow({
       width: 600,

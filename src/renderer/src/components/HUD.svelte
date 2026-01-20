@@ -17,7 +17,6 @@
     lastCount = onlineCount
   })
 
-  // Calculate Signal
   let signalWidth = $derived(Math.min(onlineCount * 20 + 20, 100))
 
   let time = $state(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
@@ -44,40 +43,17 @@
       ></div>
       <span
         class="text-[8px] font-black text-primary tracking-tighter uppercase whitespace-nowrap transition-all"
-        style="letter-spacing: {isPulsing ? '-0.02em' : '0.05em'};"
       >
         {isPulsing ? 'HOST FOUND' : 'Swarm Live'}
       </span>
     </div>
 
     <div class="flex items-center gap-1.5 text-white/90">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" class="opacity-80">
-        <rect x="2" y="14" width="3" height="6" fill={onlineCount >= 0 ? 'currentColor' : 'gray'} />
-        <rect
-          x="7"
-          y="10"
-          width="3"
-          height="10"
-          fill={onlineCount >= 2 ? 'currentColor' : 'gray'}
-          opacity={onlineCount >= 2 ? '1' : '0.2'}
-        />
-        <rect
-          x="12"
-          y="6"
-          width="3"
-          height="14"
-          fill={onlineCount >= 5 ? 'currentColor' : 'gray'}
-          opacity={onlineCount >= 5 ? '1' : '0.2'}
-        />
-        <rect
-          x="17"
-          y="2"
-          width="3"
-          height="18"
-          fill={onlineCount >= 10 ? 'currentColor' : 'gray'}
-          opacity={onlineCount >= 10 ? '1' : '0.2'}
-        />
-      </svg>
+      <div class="flex items-end gap-[2px] h-3 mb-0.5">
+        <div class="w-[3px] rounded-full bg-white/80" style="height: 30%"></div>
+        <div class="w-[3px] rounded-full bg-white/80" style="height: 60%"></div>
+        <div class="w-[3px] rounded-full bg-white/20" style="height: 100%"></div>
+      </div>
       <div class="w-5 h-2.5 border border-white/30 rounded-sm relative">
         <div
           class="absolute left-0 top-0 h-full bg-white/80 transition-all duration-1000"
@@ -97,15 +73,13 @@
     </p>
   </header>
 
-  <div class="flex-1 overflow-y-auto custom-scrollbar px-4 pt-2 pb-60 pointer-events-auto">
+  <div class="flex-1 overflow-y-auto custom-scrollbar px-4 pt-2 pb-8 pointer-events-auto">
     <HostListMobile
       onlineUsers={lobbyStore.onlineUsers || []}
       currentUserId={$user?.uid}
       currentUserRole={$user?.role}
       onEdit={() => {}}
-      onBoot={(id) => {
-        console.log('Booting', id)
-      }}
+      onBoot={(id) => console.log('Booting', id)}
     />
   </div>
 
