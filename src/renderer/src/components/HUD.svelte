@@ -1,25 +1,75 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import { user } from '$lib/stores/user'
   import { lobbyStore } from '$lib/stores/lobby.svelte'
   import HostListMobile from './HostListMobile.svelte'
 
   let { onlineCount } = $props()
 
-  // --- Dynamic Island Logic ---
-  let lastCount = $state(onlineCount)
-  let isPulsing = $state(false)
+  // FIX: Initialize to 0 to silence the Svelte warning.
+  // The onMount logic below already handles the sync before notifications start.
+  let lastCount = $state(0)
+
+  let ready = $state(false)
+
+  // --- SINGLETON GUARD ---
+  // 1. Check if we are the Overlay Window
+  const isOverlay = window.location.hash.includes('overlay')
+
+  // 2. Check if another HUD instance already claimed the "Notification Manager" role
+  //    (Cast to 'any' to bypass TS check for custom property)
+  const amINotificationManager = isOverlay && !(window as any).__SWARM_NOTIFIER_ACTIVE__
+
+  onMount(() => {
+    // If we are the chosen manager, claim the flag so duplicates back off
+    if (amINotificationManager) {
+      ;(window as any).__SWARM_NOTIFIER_ACTIVE__ = true
+    }
+
+    setTimeout(() => {
+      ready = true
+      lastCount = onlineCount
+    }, 2000)
+  })
 
   $effect(() => {
-    if (onlineCount > lastCount) {
-      isPulsing = true
-      setTimeout(() => (isPulsing = false), 3000)
+    if (ready && isOverlay && amINotificationManager) {
+      const diff = onlineCount - lastCount
+
+      if (diff !== 0) {
+        if (diff > 0) {
+          // ADD 'tag' HERE
+          new Notification('Swarm Intelligence', {
+            body: `⚠️ New Host Detected! (${onlineCount} Active)`,
+            silent: false,
+            tag: 'swarm-event' // <--- This tells Windows: "If this ID exists, replace it, don't stack it"
+          })
+          triggerPulse()
+        } else {
+          // ADD 'tag' HERE
+          new Notification('Swarm Intelligence', {
+            body: `Host Lost. (${onlineCount} Remaining)`,
+            silent: true,
+            tag: 'swarm-event' // <--- Same tag means it overwrites the previous one
+          })
+        }
+      }
     }
     lastCount = onlineCount
   })
 
-  let signalWidth = $derived(Math.min(onlineCount * 20 + 20, 100))
+  // --- VISUALS ---
+  // Visuals run on ALL instances (so the UI always looks correct)
+  let isPulsing = $state(false)
 
+  function triggerPulse() {
+    isPulsing = true
+    setTimeout(() => (isPulsing = false), 3000)
+  }
+
+  let signalWidth = $derived(Math.min(onlineCount * 20 + 20, 100))
   let time = $state(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+
   setInterval(() => {
     time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }, 1000)
@@ -31,7 +81,6 @@
 >
   <div class="h-12 w-full flex items-center justify-between px-10 pt-4 shrink-0 z-50">
     <span class="text-xs font-bold text-white/90">{time}</span>
-
     <div
       class="absolute left-1/2 -translate-x-1/2 top-3 h-7 bg-black rounded-full border border-white/5 flex items-center justify-center gap-2 transition-all duration-500 ease-in-out z-[60]"
       style="width: {isPulsing ? '150px' : '110px'}; border-color: {isPulsing
@@ -47,7 +96,6 @@
         {isPulsing ? 'HOST FOUND' : 'Swarm Live'}
       </span>
     </div>
-
     <div class="flex items-center gap-1.5 text-white/90">
       <div class="flex items-end gap-[2px] h-3 mb-0.5">
         <div class="w-[3px] rounded-full bg-white/80" style="height: 30%"></div>

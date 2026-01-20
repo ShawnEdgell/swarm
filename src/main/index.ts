@@ -41,6 +41,12 @@ function checkUpdates(): void {
 }
 
 function createOverlayWindow(): void {
+  // --- ZOMBIE GUARD: THE FIX ---
+  // If the overlay already exists and is valid, STOP. Do not create another one.
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    return
+  }
+
   try {
     const primaryDisplay = screen.getPrimaryDisplay()
     const { height } = primaryDisplay.workAreaSize

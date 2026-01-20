@@ -7,6 +7,7 @@ declare global {
       startTwitchAuth: (clientId: string) => void
       onTwitchToken: (callback: (token: string) => void) => void
       onAppClosing: (callback: () => void) => void
+      onToggleHud: (callback: () => void) => void
     }
   }
 }
