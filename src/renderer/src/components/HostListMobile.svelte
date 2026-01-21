@@ -3,19 +3,18 @@
     onlineUsers = [],
     currentUserId,
     currentUserRole,
-    onEdit,
     onBoot
   } = $props<{
     onlineUsers: any[]
     currentUserId?: string
     currentUserRole?: string
-    onEdit: () => void
     onBoot: (id: string) => void
   }>()
 
   let copiedId = $state<string | null>(null)
 
   async function handleCopy(id: string) {
+    if (!id || id === 'NO EA ID') return
     await navigator.clipboard.writeText(id)
     copiedId = id
     setTimeout(() => (copiedId = null), 2000)
@@ -85,14 +84,12 @@
             </div>
           </div>
 
-          {#if user.id === currentUserId || currentUserRole === 'admin'}
+          {#if currentUserRole === 'admin' && user.id !== currentUserId}
             <button
-              onclick={user.id === currentUserId ? onEdit : () => onBoot(user.id)}
-              class="text-[9px] uppercase font-black italic {user.id === currentUserId
-                ? 'text-primary'
-                : 'text-error'} bg-white/5 px-2.5 py-1 rounded-full hover:bg-white/10"
+              onclick={() => onBoot(user.id)}
+              class="text-[9px] uppercase font-black italic text-error bg-white/5 px-2.5 py-1 rounded-full hover:bg-white/10"
             >
-              {user.id === currentUserId ? 'Edit' : 'Boot'}
+              Boot
             </button>
           {/if}
         </div>

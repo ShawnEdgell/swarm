@@ -3,6 +3,13 @@ import { join } from 'path'
 import { electronApp, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 
+// --- CRITICAL NOTIFICATION FIX ---
+// This must be set at the top level for Windows to trust your notifications
+const appId = 'com.swarm.app'
+if (process.platform === 'win32') {
+  app.setAppUserModelId(appId)
+}
+
 autoUpdater.autoDownload = true
 
 let mainWindow: BrowserWindow | null = null
@@ -41,8 +48,6 @@ function checkUpdates(): void {
 }
 
 function createOverlayWindow(): void {
-  // --- ZOMBIE GUARD: THE FIX ---
-  // If the overlay already exists and is valid, STOP. Do not create another one.
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     return
   }
@@ -114,7 +119,6 @@ function createWindow(): void {
     }
   })
 
-  // FIX 1: Added '!' to verify mainWindow exists
   if (is.dev) mainWindow!.webContents.openDevTools({ mode: 'detach' })
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -126,7 +130,6 @@ function createWindow(): void {
     callback({ cancel: false, responseHeaders })
   })
 
-  // FIX 2: Removed unused 'e' parameter
   mainWindow.on('close', () => {
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.destroy()
@@ -154,7 +157,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.swarm.app')
+  // Use the local appId variable here as well for consistency
+  electronApp.setAppUserModelId(appId)
   createWindow()
 
   let isOverlayVisible = false

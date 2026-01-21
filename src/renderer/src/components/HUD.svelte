@@ -105,7 +105,6 @@
       onlineUsers={lobbyStore.onlineUsers || []}
       currentUserId={$user?.uid}
       currentUserRole={$user?.role}
-      onEdit={() => {}}
       onBoot={(id) => console.log('Booting', id)}
     />
   </div>

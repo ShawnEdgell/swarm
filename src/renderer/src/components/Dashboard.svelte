@@ -37,7 +37,7 @@
   <Navbar />
 
   <div class="flex-1 flex overflow-hidden relative">
-    <Sidebar bind:isOpen={chatIsOpen} channel="stillmilky" />
+    <Sidebar bind:isOpen={chatIsOpen} />
 
     <main class="flex-1 flex flex-col overflow-y-auto bg-base-100 relative">
       <div class="p-6 space-y-4 max-w-5xl mx-auto w-full">

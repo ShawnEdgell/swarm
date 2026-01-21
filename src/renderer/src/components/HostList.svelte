@@ -107,22 +107,22 @@
               </button>
             </div>
 
-            {#if user.note}
-              <p class="text-xs font-medium italic text-white/60 leading-snug max-w-xl">
-                "{user.note}"
-              </p>
-            {/if}
-
             {#if user.tags?.length > 0}
               <div class="flex flex-wrap gap-1">
                 {#each user.tags as tag (tag)}
                   <span
-                    class="bg-black/30 text-white/40 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border border-white/5"
+                    class="bg-black/30 text-white/40 text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border border-white/5"
                   >
                     {tag}
                   </span>
                 {/each}
               </div>
+            {/if}
+
+            {#if user.note}
+              <p class="text-sm font-medium italic text-white/60 leading-snug max-w-xl">
+                "{user.note}"
+              </p>
             {/if}
           </div>
 
@@ -135,17 +135,16 @@
                   {flair.label}
                 </span>
               {/if}
-              <span
-                class="text-[11px] font-black uppercase italic text-white/80 tracking-wider mb-1.5"
-              >
+              <span class="text-xs font-black uppercase italic text-white/80 tracking-wider mb-1.5">
                 {user.name || user.displayName || 'Skater'}
               </span>
 
               {#if user.id === currentUserId || currentUserRole === 'admin'}
                 <button
                   onclick={user.id === currentUserId ? onEdit : () => onBoot(user.id)}
-                  class="text-[9px] uppercase font-black italic {user.id === currentUserId
-                    ? 'text-primary'
+                  class="text-[10px] btn btn-xs uppercase font-black italic {user.id ===
+                  currentUserId
+                    ? 'text-warning'
                     : 'text-error'} bg-white/5 px-2.5 py-1 rounded-lg hover:bg-white/10 transition-colors"
                 >
                   {user.id === currentUserId ? 'Edit' : 'Boot'}
