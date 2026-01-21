@@ -22,7 +22,13 @@ class LobbyStore {
   private heartbeatInterval: any = null
   private authUnsubscribe: (() => void) | null = null
 
-  // Role-based sorting and 5-minute timeout filter
+  /**
+   * STABLE SORTING & FILTERING
+   * 1. Filters users inactive for > 5 minutes
+   * 2. Sorts by Role (Admin > Host > Creator > Member)
+   * 3. Tie-breaker: Oldest session (startedAt) first.
+   * 4. Hard Tie-breaker: ID string comparison to prevent "jumping" during heartbeats.
+   */
   onlineUsers = $derived.by(() => {
     return this.rawUsers
       .filter((u) => {
@@ -32,8 +38,25 @@ class LobbyStore {
         return diffMinutes < 5
       })
       .sort((a, b) => {
-        const getScore = (u: any) => (u.role === 'admin' ? 100 : u.role === 'host' ? 50 : 10)
-        return getScore(b) - getScore(a) || (b.lastSeen?.seconds || 0) - (a.lastSeen?.seconds || 0)
+        // Tier 1: Role Priority
+        const getScore = (u: any) => {
+          if (u.role === 'admin') return 100
+          if (u.role === 'host') return 50
+          if (u.role === 'creator') return 30
+          return 10
+        }
+
+        const scoreDiff = getScore(b) - getScore(a)
+        if (scoreDiff !== 0) return scoreDiff
+
+        // Tier 2: Session Prestige (Oldest startedAt first)
+        const timeA = a.startedAt?.seconds || a.startedAt || a.lastSeen?.seconds || 0
+        const timeB = b.startedAt?.seconds || b.startedAt || b.lastSeen?.seconds || 0
+
+        if (timeA !== timeB) return timeA - timeB
+
+        // Tier 3: Hard Tie-breaker (Stabilizes the list when timestamps match or are missing)
+        return a.id.localeCompare(b.id)
       })
   })
 
@@ -48,24 +71,23 @@ class LobbyStore {
       })
     }
 
+    // Update 'now' every 10 seconds for the UI timers and filter
     setInterval(() => {
       this.now = Date.now()
     }, 10000)
   }
 
-  // --- NEW: Helper for App.svelte toggle button ---
   async toggleHosting(user: any, currentlySkating: boolean) {
     if (!user) return
     await this.setHosting(user.uid, !currentlySkating, user)
   }
 
-  // --- NEW: Helper for EASetupModal ---
   async updateProfileAndHost(uid: string, data: any) {
     const profile = {
       eaUsername: data.username,
       tags: data.tags,
       note: data.note,
-      isHosting: true // Force hosting to true when they save setup
+      isHosting: true
     }
     await this.setHosting(uid, true, profile)
   }
@@ -131,6 +153,16 @@ class LobbyStore {
       platform: 'desktop'
     }
 
+    // FIX: Only set startedAt if they are starting a fresh session
+    if (isHosting) {
+      const existingUser = this.rawUsers.find((u) => u.id === uid)
+      // If they were already hosting, keep the old timestamp, otherwise set new one
+      payload.startedAt = existingUser?.startedAt || serverTimestamp()
+    } else {
+      // Clear start time when they stop hosting
+      payload.startedAt = null
+    }
+
     const tagsToSave = userData?.tags || currentUser?.tags
     if (tagsToSave && tagsToSave.length > 0) {
       payload.tags = tagsToSave
@@ -140,7 +172,8 @@ class LobbyStore {
       await setDoc(userRef, payload, { merge: true })
 
       if (isHosting) {
-        // Start heartbeat to keep the user in the "onlineUsers" derived list
+        // HEARTBEAT: Only update lastSeen to keep them on the radar
+        // Never update startedAt here or the list will jump
         this.heartbeatInterval = setInterval(() => {
           setDoc(userRef, { lastSeen: serverTimestamp() }, { merge: true })
         }, 60000)
