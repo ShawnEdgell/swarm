@@ -6,6 +6,14 @@
   const flair = $derived(getFlair(user.role))
   const timeStr = $derived(getSessionTime(user.startedAt, now))
 
+  const colorMap = {
+    warning: 'text-warning',
+    info: 'text-info',
+    secondary: 'text-secondary',
+    white: 'text-white'
+  }
+  const accentColor = $derived(colorMap[flair.color as keyof typeof colorMap] || 'text-white')
+
   let copiedId = $state<string | null>(null)
   async function handleCopy(id: string) {
     if (!id || id === 'NO EA ID') return
@@ -17,28 +25,29 @@
 
 {#if isMobile}
   <div
-    class="border-2 rounded-3xl p-4 transition-all group relative overflow-hidden border-{flair.color}/30 bg-{flair.color}/5 shadow-xl hover:border-white/20"
+    class="bg-white/5 hover:bg-white-[0.07] rounded-3xl p-4 transition-all group relative overflow-hidden shadow-xl"
   >
     <div class="absolute top-4 right-4 flex items-center gap-1.5 opacity-40">
       <div class="w-1 h-1 rounded-full bg-current animate-pulse"></div>
-      <span class="text-[9px] font-black uppercase italic">{timeStr}</span>
+      <span class="text-xs font-black uppercase italic">{timeStr}</span>
     </div>
 
     <div class="flex items-center justify-between mb-3">
-      <div class="flex items-center gap-2.5">
+      <div class="flex items-center gap-3">
         <img
           src={user.avatar || user.photoURL}
           alt=""
-          class="w-8 h-8 rounded-lg bg-base-300 border-2 border-{flair.color}/50 shadow-md object-cover"
+          class="w-10 h-10 rounded-xl bg-base-300 border border-white/10 shadow-md object-cover"
         />
-        <div class="flex flex-col">
+        <div class="flex flex-col justify-center">
           {#if flair.label}
             <span
-              class="text-[8px] font-black text-{flair.color} uppercase tracking-widest leading-none mb-0.5"
-              >{flair.label}</span
+              class="text-[10px] font-black uppercase tracking-[0.15em] leading-none mb-1 {accentColor}"
             >
+              {flair.label}
+            </span>
           {/if}
-          <span class="text-[10px] font-black uppercase italic text-white/50 tracking-wider">
+          <span class="text-xs font-black uppercase italic text-white tracking-wider">
             {user.name || user.displayName || 'Skater'}
           </span>
         </div>
@@ -47,7 +56,7 @@
       {#if currentUserRole === 'admin' && user.id !== currentUserId}
         <button
           onclick={() => onBoot(user.id)}
-          class="text-[9px] uppercase font-black italic text-error bg-white/5 px-2.5 py-1 rounded-full hover:bg-white/10 relative z-10"
+          class="text-[9px] uppercase font-black italic text-error bg-white/5 px-2.5 py-1 rounded-full hover:bg-error/20 relative z-10 transition-colors"
         >
           Boot
         </button>
@@ -56,14 +65,13 @@
 
     <div class="flex items-center gap-2.5 mb-2.5">
       <h3
-        class="font-black uppercase italic text-xl tracking-tighter leading-none text-{flair.color} truncate pr-1"
+        class="font-black uppercase italic text-xl tracking-tighter leading-none truncate pr-1 {accentColor}"
       >
         {user.eaUsername || 'NO EA ID'}
       </h3>
-
       <button
         onclick={() => handleCopy(user.eaUsername)}
-        class="btn btn-ghost btn-xs btn-circle h-6 w-6 bg-white/5 hover:bg-primary hover:text-primary-content border border-white/10 relative z-10"
+        class="btn btn-ghost btn-xs btn-circle h-6 w-6 bg-white/5 hover:bg-primary border border-white/10 relative z-10"
       >
         {#if copiedId === user.eaUsername}
           <svg
@@ -102,7 +110,7 @@
       <div class="flex flex-wrap gap-1 mb-2.5">
         {#each user.tags as tag (tag)}
           <span
-            class="bg-black/40 text-white/40 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border border-white/5"
+            class="bg-black/30 text-white/40 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border border-white/5"
             >{tag}</span
           >
         {/each}
@@ -110,18 +118,18 @@
     {/if}
 
     {#if user.note}
-      <div class="w-full bg-black/40 border-l-2 border-{flair.color} p-2 rounded-r-lg">
-        <p class="text-xs font-medium italic text-white/80 leading-snug">"{user.note}"</p>
+      <div class="w-full bg-black/20 border-l-2 border-white/10 p-2 rounded-r-lg">
+        <p class="text-xs font-medium italic text-white/60 leading-snug">"{user.note}"</p>
       </div>
     {/if}
   </div>
 {:else}
   <div
-    class="border-2 rounded-2xl p-5 transition-all group relative overflow-visible border-{flair.color}/30 bg-{flair.color}/5 shadow-xl hover:border-white/20"
+    class="bg-white/5 hover:bg-white-[0.07] rounded-2xl p-5 transition-all group relative overflow-visible shadow-xl"
   >
     <div class="absolute -top-3 left-6 z-20">
       <span
-        class="rounded-md border border-white/10 bg-neutral-800 px-3 py-1 text-[9px] font-black tracking-widest text-white/60 italic shadow-xl"
+        class="rounded-md border border-white/10 bg-neutral-900 px-3 py-1 text-[10px] font-black tracking-widest text-white/60 italic shadow-xl uppercase"
       >
         {timeStr}
       </span>
@@ -141,7 +149,7 @@
       <div class="flex-1 min-w-0 space-y-2">
         <div class="flex items-center gap-3">
           <h3
-            class="font-black uppercase italic text-2xl tracking-tighter leading-none text-{flair.color} truncate pr-2"
+            class="font-black uppercase italic text-2xl tracking-tighter leading-none truncate pr-2 {accentColor}"
           >
             {user.eaUsername || 'NO EA ID'}
           </h3>
@@ -181,6 +189,7 @@
             {/if}
           </button>
         </div>
+
         {#if user.tags?.length > 0}
           <div class="flex flex-wrap gap-1">
             {#each user.tags as tag (tag)}
@@ -191,27 +200,35 @@
             {/each}
           </div>
         {/if}
-        {#if user.note}<p class="text-sm font-medium italic text-white/60 leading-snug max-w-xl">
+
+        {#if user.note}
+          <p class="text-sm font-medium italic text-white/40 leading-snug max-w-xl">
             "{user.note}"
-          </p>{/if}
+          </p>
+        {/if}
       </div>
 
-      <div class="flex items-center gap-3 shrink-0 py-1">
-        <div class="text-right flex flex-col items-end">
-          {#if flair.label}<span
-              class="text-[8px] font-black text-{flair.color} uppercase tracking-widest mb-1"
-              >{flair.label}</span
-            >{/if}
-          <span class="text-xs font-black uppercase italic text-white/80 tracking-wider mb-1.5"
-            >{user.name || user.displayName || 'Skater'}</span
+      <div class="flex items-center gap-4 shrink-0 py-1">
+        <div class="text-right flex flex-col items-end justify-center">
+          {#if flair.label}
+            <span
+              class="text-[11px] font-black uppercase tracking-[0.2em] mb-1 {accentColor} leading-none"
+            >
+              {flair.label}
+            </span>
+          {/if}
+          <span
+            class="text-sm font-black uppercase italic text-white tracking-widest mb-2 leading-none"
           >
+            {user.name || user.displayName || 'Skater'}
+          </span>
           {#if user.id === currentUserId || currentUserRole === 'admin'}
             <button
               onclick={user.id === currentUserId ? onEdit : () => onBoot(user.id)}
               class="text-[10px] btn btn-xs h-auto min-h-0 uppercase font-black italic {user.id ===
               currentUserId
                 ? 'text-warning'
-                : 'text-error'} bg-white/5 px-2.5 py-1 rounded-lg hover:bg-white/10 transition-colors"
+                : 'text-error'} bg-white/10 px-3 py-1.5 rounded-lg hover:bg-white/20 transition-colors"
             >
               {user.id === currentUserId ? 'Edit' : 'Boot'}
             </button>
@@ -220,7 +237,7 @@
         <img
           src={user.avatar || user.photoURL}
           alt=""
-          class="w-11 h-11 rounded-xl bg-base-300 border-2 border-{flair.color}/50 shadow-lg object-cover"
+          class="w-14 h-14 rounded-2xl bg-base-300 border border-white/10 shadow-lg object-cover"
         />
       </div>
     </div>

@@ -6,7 +6,7 @@
   <span class="text-xs font-bold text-white/90">{time}</span>
 
   <div
-    class="absolute left-1/2 -translate-x-1/2 top-3 h-7 bg-black rounded-full border border-white/5 flex items-center justify-center gap-2 transition-all duration-500 z-[60]"
+    class="absolute left-1/2 -translate-x-1/2 top-3 h-7 bg-black rounded-full border border-white/5 flex items-center justify-center gap-2 transition-all duration-500 z-60"
     style="width: {isPulsing ? '150px' : '110px'}; border-color: {isPulsing
       ? 'var(--p)'
       : 'rgba(255,255,255,0.05)'}"

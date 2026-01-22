@@ -16,6 +16,8 @@
   let ready = $state(false)
   let isPulsing = $state(false)
   let time = $state(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+
+  // FIX: signalWidth must be derived to track onlineCount
   let signalWidth = $derived(Math.min(onlineCount * 20 + 20, 100))
 
   const isOverlay = window.location.hash.includes('overlay')
@@ -36,6 +38,7 @@
       time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }, 1000)
 
+    // Delay "Ready" so we don't pulse on the initial load
     setTimeout(() => {
       ready = true
       lastCount = onlineCount
@@ -47,6 +50,7 @@
     }
   })
 
+  // Watch for new sessions to trigger pulse
   $effect(() => {
     if (ready && isOverlay && onlineCount > lastCount) {
       isPulsing = true
@@ -58,7 +62,7 @@
 
 <div
   data-theme="dark"
-  class="h-[850px] w-[400px] flex flex-col bg-black border-[6px] border-[#1a1a1a] rounded-[60px] shadow-2xl overflow-hidden relative ring-1 ring-white/10 z-[9999]"
+  class="h-212.5 w-100 flex flex-col bg-black border-[6px] border-[#1a1a1a] rounded-[60px] shadow-2xl overflow-hidden relative ring-1 ring-white/10 z-9999"
 >
   <StatusBar {isPulsing} {signalWidth} {time} />
 

@@ -28,14 +28,15 @@
   class="h-full bg-base-300 border-r border-white/5 flex flex-col transition-all duration-300 ease-in-out relative z-40 shadow-2xl"
   style="width: {isOpen ? '350px' : '72px'};"
 >
-  <div class="h-[64px] border-b border-white/5 flex items-center bg-base-200/50 overflow-hidden">
+  <div class="h-16 border-b border-white/5 flex items-center bg-base-200/50 overflow-hidden">
     {#if isOpen}
       <div
-        class="flex items-center justify-between w-full min-w-[310px] px-4 animate-in fade-in duration-500"
+        class="flex items-center justify-between w-full min-w-77.5 px-4 animate-in fade-in duration-500"
       >
         <div class="flex flex-col flex-1">
           {#if isEditing}
             <div class="flex items-center gap-2">
+              <!-- svelte-ignore a11y_autofocus -->
               <input
                 bind:value={inputVal}
                 onkeydown={(e) => e.key === 'Enter' && saveChannel()}

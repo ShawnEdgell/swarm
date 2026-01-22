@@ -5,9 +5,9 @@
 
 export const getFlair = (role: string = 'member') => {
   const flairs = {
-    admin: { label: 'MILKY', color: 'warning', score: 100 },
-    host: { label: 'MEGASERVER HOST', color: 'info', score: 50 },
-    creator: { label: 'CREATOR', color: 'secondary', score: 30 },
+    admin: { label: '💀MILKY', color: 'warning', score: 100 },
+    host: { label: '⚡MEGASERVER HOST', color: 'info', score: 50 },
+    creator: { label: '📼CREATOR', color: 'secondary', score: 30 },
     member: { label: null, color: 'white', score: 10 }
   }
   return flairs[role as keyof typeof flairs] || flairs.member
