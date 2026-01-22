@@ -1,6 +1,7 @@
 import { db, auth } from '$lib/firebase'
 import { user as userStore } from './user'
 import { get } from 'svelte/store'
+import { sortUsers } from '$lib/utils/hostHelpers' // Ensure this utility file exists
 import {
   collection,
   query,
@@ -23,46 +24,27 @@ class LobbyStore {
   private authUnsubscribe: (() => void) | null = null
 
   /**
-   * STABLE SORTING & FILTERING
-   * 1. Filters users inactive for > 5 minutes
-   * 2. Sorts by Role (Admin > Host > Creator > Member)
-   * 3. Tie-breaker: Oldest session (startedAt) first.
-   * 4. Hard Tie-breaker: ID string comparison to prevent "jumping" during heartbeats.
+   * DERIVED DATA
+   * Combines the raw Firebase data with our centralized sorting logic.
+   * This updates automatically whenever rawUsers or now changes.
    */
   onlineUsers = $derived.by(() => {
-    return this.rawUsers
-      .filter((u) => {
-        if (!u.lastSeen) return true
-        const lastSeenDate = u.lastSeen.toDate ? u.lastSeen.toDate() : new Date(u.lastSeen)
-        const diffMinutes = (this.now - lastSeenDate.getTime()) / 1000 / 60
-        return diffMinutes < 5
-      })
-      .sort((a, b) => {
-        // Tier 1: Role Priority
-        const getScore = (u: any) => {
-          if (u.role === 'admin') return 100
-          if (u.role === 'host') return 50
-          if (u.role === 'creator') return 30
-          return 10
-        }
+    // 1. Filter out users who haven't sent a heartbeat in 5 minutes
+    const active = this.rawUsers.filter((u) => {
+      if (!u.lastSeen) return true
+      const lastSeenDate = u.lastSeen.toDate ? u.lastSeen.toDate() : new Date(u.lastSeen)
+      const diffMinutes = (this.now - lastSeenDate.getTime()) / 1000 / 60
+      return diffMinutes < 5
+    })
 
-        const scoreDiff = getScore(b) - getScore(a)
-        if (scoreDiff !== 0) return scoreDiff
-
-        // Tier 2: Session Prestige (Oldest startedAt first)
-        const timeA = a.startedAt?.seconds || a.startedAt || a.lastSeen?.seconds || 0
-        const timeB = b.startedAt?.seconds || b.startedAt || b.lastSeen?.seconds || 0
-
-        if (timeA !== timeB) return timeA - timeB
-
-        // Tier 3: Hard Tie-breaker (Stabilizes the list when timestamps match or are missing)
-        return a.id.localeCompare(b.id)
-      })
+    // 2. Apply standardized sorting (Role > Prestige > ID)
+    return sortUsers(active, this.now)
   })
 
   constructor() {
     this.start()
 
+    // Monitor Auth state to kill heartbeat if user logs out
     if (!this.authUnsubscribe) {
       this.authUnsubscribe = onAuthStateChanged(auth, (user) => {
         if (!user) {
@@ -71,12 +53,15 @@ class LobbyStore {
       })
     }
 
-    // Update 'now' every 10 seconds for the UI timers and filter
+    // Ticker to keep "Time Elapsed" and "Active Filter" fresh
     setInterval(() => {
       this.now = Date.now()
     }, 10000)
   }
 
+  /**
+   * PUBLIC ACTIONS
+   */
   async toggleHosting(user: any, currentlySkating: boolean) {
     if (!user) return
     await this.setHosting(user.uid, !currentlySkating, user)
@@ -92,30 +77,9 @@ class LobbyStore {
     await this.setHosting(uid, true, profile)
   }
 
-  cleanup() {
-    if (this.unsubscribe) {
-      this.unsubscribe()
-      this.unsubscribe = null
-    }
-    this.stopHeartbeat()
-  }
-
-  private stopHeartbeat() {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval)
-      this.heartbeatInterval = null
-    }
-  }
-
-  async forceReconnect() {
-    try {
-      await disableNetwork(db)
-      await enableNetwork(db)
-    } catch (e) {
-      console.warn('🔌 [Lobby] Reconnect ignored')
-    }
-  }
-
+  /**
+   * FIREBASE SYNC LOGIC
+   */
   start() {
     if (this.unsubscribe) return
     const q = query(collection(db, 'users'), where('isHosting', '==', true))
@@ -127,6 +91,7 @@ class LobbyStore {
         this.loading = false
       },
       async (error) => {
+        // Electron-specific: Force reconnect if network drops (laptop lid closed, etc.)
         if (error.code === 'unavailable' || error.message.includes('offline')) {
           await this.forceReconnect()
         }
@@ -153,13 +118,11 @@ class LobbyStore {
       platform: 'desktop'
     }
 
-    // FIX: Only set startedAt if they are starting a fresh session
+    // Persistence Check: Don't reset startedAt if they are already hosting
     if (isHosting) {
       const existingUser = this.rawUsers.find((u) => u.id === uid)
-      // If they were already hosting, keep the old timestamp, otherwise set new one
       payload.startedAt = existingUser?.startedAt || serverTimestamp()
     } else {
-      // Clear start time when they stop hosting
       payload.startedAt = null
     }
 
@@ -172,14 +135,40 @@ class LobbyStore {
       await setDoc(userRef, payload, { merge: true })
 
       if (isHosting) {
-        // HEARTBEAT: Only update lastSeen to keep them on the radar
-        // Never update startedAt here or the list will jump
+        // Start 60s Heartbeat to stay in the "Active" filter
         this.heartbeatInterval = setInterval(() => {
           setDoc(userRef, { lastSeen: serverTimestamp() }, { merge: true })
         }, 60000)
       }
     } catch (err: any) {
       console.error('Hosting error:', err)
+    }
+  }
+
+  /**
+   * LIFECYCLE & UTILS
+   */
+  cleanup() {
+    if (this.unsubscribe) {
+      this.unsubscribe()
+      this.unsubscribe = null
+    }
+    this.stopHeartbeat()
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval)
+      this.heartbeatInterval = null
+    }
+  }
+
+  async forceReconnect() {
+    try {
+      await disableNetwork(db)
+      await enableNetwork(db)
+    } catch (e) {
+      console.warn('🔌 [Lobby] Reconnect ignored')
     }
   }
 }

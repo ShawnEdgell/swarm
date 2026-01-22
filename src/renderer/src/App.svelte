@@ -3,7 +3,7 @@
   import { user } from '$lib/stores/user'
   import { lobbyStore } from '$lib/stores/lobby.svelte'
 
-  import HUD from './components/HUD.svelte'
+  import HUD from './components//hud/HUD.svelte'
   import Dashboard from './components/Dashboard.svelte'
   import SystemNotifications from './components/SystemNotifications.svelte' // <--- IMPORT
 

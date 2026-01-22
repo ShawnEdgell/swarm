@@ -1,7 +1,7 @@
 <script lang="ts">
   import { user } from '$lib/stores/user'
   import { lobbyStore } from '$lib/stores/lobby.svelte'
-  import HostList from './HostList.svelte'
+  import HostList from './hostlist/HostList.svelte'
 
   let { onEditEASetup } = $props<{ onEditEASetup: () => void }>()
 </script>
